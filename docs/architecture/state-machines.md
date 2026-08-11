@@ -51,7 +51,7 @@ Available -> Consumed -> Available (after 1 hour elapses)
 ```
 | Transition | Trigger |
 |---|---|
-| Balance increases | `CreditPurchase.status` becomes `completed` via Stripe webhook `payment_intent.succeeded` → `Wallet.balance += credits_granted`, a `WalletTransaction(type=purchase_credit)` row is written |
+| Balance increases | `CreditPurchase.status` becomes `completed` via Razorpay webhook `payment.captured` → `Wallet.balance += credits_granted`, a `WalletTransaction(type=purchase_credit)` row is written |
 | Balance decreases | Org generates an export **and** the free hourly entitlement is currently `Consumed` (unavailable) → debit 1 from `Wallet.balance`, write `WalletTransaction(type=paid_export_debit)` |
 | Balance stays at 0 | Further export attempts are blocked (see hard gate above) until either the free entitlement becomes `Available` again or a new purchase completes |
 
@@ -62,6 +62,6 @@ Available -> Consumed -> Available (after 1 hour elapses)
 
 ### Edge cases
 - **No rate cap beyond the balance itself** — purchased credits can be spent as fast as the org can generate exports; the only throttle is the 1-hour non-stacking rule on the *free* source (per your explicit answer: "no separate cap — just spend down the balance").
-- **Webhook processing must be idempotent** — Stripe may redeliver `payment_intent.succeeded`; `stripe_payment_intent_id` must be de-duplicated (unique constraint on `CreditPurchase.stripe_payment_intent_id`) before incrementing `Wallet.balance`.
+- **Webhook processing must be idempotent** — Razorpay may redeliver `payment.captured`; `razorpay_payment_id` must be de-duplicated (unique constraint on `CreditPurchase.razorpay_payment_id`) before incrementing `Wallet.balance`.
 - **Concurrent export requests:** the resolution-order check-and-debit must happen inside a single DB transaction with a row lock on `Wallet` to prevent two simultaneous exports from both reading `balance = 1` and over-spending.
 - **Credits never expire** — no expiry job/state needed for purchased balance.

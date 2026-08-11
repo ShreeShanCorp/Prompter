@@ -11,7 +11,7 @@ Expands the Section 2 role table into an action-level matrix. `Member` and `Owne
 | Remove member | ❌ | ✅ | ❌ |
 | Change member role | ❌ | ✅ | ❌ |
 | View wallet balance / transaction history | ✅ (own org) | ✅ | ✅ (read-only, logged) |
-| Purchase credit pack (Stripe) | ❌ | ✅ | ❌ |
+| Purchase credit pack (Razorpay) | ❌ | ✅ | ❌ |
 | Suspend/reactivate org | ❌ | ❌ | ✅ |
 | View org usage (project/export counts) | ✅ (own org) | ✅ | ✅ (any org) |
 | **Project** | | | |

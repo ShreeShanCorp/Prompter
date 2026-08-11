@@ -99,7 +99,6 @@ Expands the Section 3 relationship sketch in `SaaS-Build-Prompt-Template.md` int
 |---|---|---|
 | id | uuid, pk | |
 | org_id | fk Org, unique | |
-| stripe_customer_id | string, nullable | created lazily on first purchase |
 | balance | int | purchased credits remaining; never expires; excludes the free hourly entitlement |
 | last_free_export_at | timestamp, nullable | last time the org consumed its free hourly export; null = never used |
 | created_at / updated_at | timestamp | |
@@ -111,10 +110,11 @@ Expands the Section 3 relationship sketch in `SaaS-Build-Prompt-Template.md` int
 | org_id | fk Org | |
 | wallet_id | fk Wallet | |
 | purchased_by | fk Member | Owner-only action, see `rbac.md` |
-| pack | enum(starter_1usd_2credits, value_5usd_20credits) | |
+| pack | enum(starter_1usd_2credits, value_5usd_20credits) | naming kept as originally locked (Section 5); amount actually charged is the INR equivalent, see `amount_inr` |
 | credits_granted | int | 2 or 20 |
-| amount_usd | numeric | 1.00 or 5.00 |
-| stripe_payment_intent_id | string | |
+| amount_inr | numeric | INR amount charged (Razorpay settles Indian merchants in INR, not USD) |
+| razorpay_order_id | string | created up front via Razorpay's Orders API, before the user pays |
+| razorpay_payment_id | string, nullable | set once a payment is captured against the order; unique, used for webhook de-duplication |
 | status | enum(pending, completed, failed) | balance only incremented on `completed`, via webhook |
 | created_at | timestamp | |
 

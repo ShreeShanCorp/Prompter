@@ -7,12 +7,14 @@ Consolidates `SaaS-Build-Prompt-Template.md` plus `erd.md`, `rbac.md`, `state-ma
 Locked in this phase, replacing the earlier Stripe-subscription design:
 - **Unit of consumption ("attempt") = one export generation** (.md/.docx/.pdf) — not AI-assist calls, not project creation.
 - **Free entitlement:** 1 free export per rolling 1-hour window per org, non-stacking (unused hours are not banked).
-- **Purchased credits:** $1 = 2 credits, $5 = 20 credits, one-time Stripe payments, never expire, no additional rate cap beyond the balance itself.
+- **Purchased credits:** $1 = 2 credits, $5 = 20 credits, one-time Razorpay payments, never expire, no additional rate cap beyond the balance itself.
 - **Resolution order and concurrency handling:** see `state-machines.md` → "Wallet / Credit lifecycle."
 - **Entities:** `Wallet`, `CreditPurchase`, `WalletTransaction` (replacing the originally-sketched `Subscription` entity) — see `erd.md`.
 - **RBAC:** any Member/Owner can trigger an export (spending a credit); only an Owner can purchase a credit pack — see `rbac.md`.
 
 This was flagged mid-phase as a conflict with the original Stripe-subscription plan in Section 4 (protocol rule 5) and resolved with you before proceeding; `SaaS-Build-Prompt-Template.md` Sections 3, 4, and 5 have been updated to match.
+
+**Revised during Stage D:** the payment processor itself was changed from Stripe to **Razorpay** — Stripe doesn't support India-based merchants, and Razorpay was already named as the template's own alternative in Section 4. No change to the billing model above (still one-time credit-pack payments, same amounts) — only the processor and its integration details (orders API + webhook signature scheme differ from Stripe's).
 
 ## Remaining implementation decisions (architect's call, technical rather than product-level)
 

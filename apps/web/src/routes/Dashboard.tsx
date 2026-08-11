@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, type ProjectStatus } from "../lib/apiClient";
+import { WalletPanel } from "../components/WalletPanel";
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
   draft: "Draft",
@@ -33,6 +34,8 @@ export function Dashboard() {
   return (
     <div className="max-w-3xl mx-auto px-8 py-10">
       <h1 className="text-xl font-semibold mb-6">Projects</h1>
+
+      <WalletPanel />
 
       <form
         className="flex gap-2 mb-8"

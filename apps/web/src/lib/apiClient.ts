@@ -52,6 +52,25 @@ export interface Wallet {
   lastFreeExportAt: string | null;
 }
 
+export type CreditPack = "starter_1usd_2credits" | "value_5usd_20credits";
+
+export interface CreditPurchase {
+  id: string;
+  pack: CreditPack;
+  creditsGranted: number;
+  amountInr: string;
+  status: "pending" | "completed" | "failed";
+  createdAt: string;
+}
+
+export interface CreatedOrder {
+  creditPurchaseId: string;
+  orderId: string;
+  amountInr: number;
+  currency: "INR";
+  keyId?: string;
+}
+
 class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -112,6 +131,12 @@ export const api = {
     ),
 
   getWallet: () => request<Wallet>("/wallet"),
+  listCreditPurchases: () => request<CreditPurchase[]>("/billing/credit-purchases"),
+  createCreditPurchase: (pack: CreditPack) =>
+    request<CreatedOrder>("/billing/credit-purchases", {
+      method: "POST",
+      body: JSON.stringify({ pack }),
+    }),
 
   aiAssist: (id: string, section: string, inputText: string) =>
     request<{ section: string; outputText: string; model: string }>(`/projects/${id}/ai-assist`, {

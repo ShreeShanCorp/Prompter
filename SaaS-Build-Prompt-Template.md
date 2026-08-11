@@ -19,7 +19,7 @@ You are acting as the lead full-stack engineer and technical architect for a new
 | Role | Can see | Can do | Explicitly cannot do |
 |---|---|---|---|
 | `Member` (org user) | Own org's projects/templates, own exports/history | Create/edit/delete templates within their org, run AI-assist, export (.md/.docx/.pdf), copy tuned-per-tool output, manage own profile | Manage org billing, invite/remove org members, change org plan, access other orgs' data |
-| `Org Owner/Admin` | Everything a Member sees, plus org billing, member list, org settings | Everything a Member can do, plus invite/remove/role-change org members, manage subscription/plan (Stripe), set org-level defaults | Access other orgs' data, access platform admin panel |
+| `Org Owner/Admin` | Everything a Member sees, plus org billing, member list, org settings | Everything a Member can do, plus invite/remove/role-change org members, purchase credit packs (Razorpay), set org-level defaults | Access other orgs' data, access platform admin panel |
 | `Platform Admin` | All orgs (metadata/usage, not private template content by default), platform-wide usage/billing status, support tooling | Manage user/org accounts (suspend, support actions), view platform analytics, manage the product-name rename-point config, manage plan/pricing config | Arbitrarily read a private org's template content without an explicit support/audit reason (logged access only) |
 
 > Note: no anonymous/free-tier public role in v1 — an account (and org) is required to use the wizard, since usage is metered against a plan (Section 5).
@@ -34,7 +34,7 @@ You are acting as the lead full-stack engineer and technical architect for a new
   Project 1---* Export              (.md / .docx / .pdf artifacts, versioned)
   Project 1---* DeliveryRecord       (per-tool copy/API/MCP delivery attempts + status)
   Org 1---1 Wallet                  (purchased-credit balance, free-export entitlement tracking)
-  Org 1---* CreditPurchase (Stripe)  (one-time credit-pack payments)
+  Org 1---* CreditPurchase (Razorpay) (one-time credit-pack payments)
   Org 1---* WalletTransaction        (ledger: purchases, free grants, export debits)
   Member 1---* AIAssistRequest       (LLM calls made while filling a section, for audit/cost tracking)
   ```
@@ -64,7 +64,7 @@ You are acting as the lead full-stack engineer and technical architect for a new
 | Cache | Redis 7.x |
 | Queue | BullMQ (for async export generation and AI-assist calls) |
 | Auth | Clerk (org/team support built in) |
-| Payments | Stripe (one-time payments for credit packs — pay-per-export credit/wallet model, not recurring subscriptions) |
+| Payments | Razorpay (one-time payments for credit packs — pay-per-export credit/wallet model, not recurring subscriptions; India-compatible, per Stage D revision) |
 | AI-assist LLM | Anthropic Claude API (Claude Sonnet family) |
 | Hosting / CI-CD | Vercel (frontend) + Railway (backend + Postgres + Redis), GitHub Actions |
 | Testing | Vitest + Playwright |
@@ -81,7 +81,7 @@ You are acting as the lead full-stack engineer and technical architect for a new
   4. Project save/edit/versioning (Draft → InProgress → ReadyToExport state machine).
   5. Export to `.md`, `.docx`, and `.pdf`.
   6. "Copy for [tool]" tuned-output buttons for Claude Code, Codex, Antigravity, and a generic "other AI tool" format.
-  7. Stripe billing: pay-per-export credit/wallet model — each org gets 1 free export per rolling 1-hour window (non-stacking, use-it-or-lose-it); beyond that, Owners buy credit packs ($1 = 2 credits, $5 = 20 credits) that never expire and are spent 1-per-export with no additional rate cap.
+  7. Razorpay billing: pay-per-export credit/wallet model — each org gets 1 free export per rolling 1-hour window (non-stacking, use-it-or-lose-it); beyond that, Owners buy credit packs ($1 = 2 credits, $5 = 20 credits) that never expire and are spent 1-per-export with no additional rate cap.
   8. Platform Admin panel: user/org list, suspend/reactivate, basic usage view, rename-point config for the product name.
   9. Tenant-isolation automated test proving one org cannot read/write another org's data.
 - **Explicitly deferred to v2+:**
@@ -93,16 +93,16 @@ You are acting as the lead full-stack engineer and technical architect for a new
 
 ## 6. Non-Functional Requirements
 
-- **Security / compliance bar:** Tenant-isolation proof required via automated test (Section 5, must-have #9); standard global hosting (no data-residency constraint); OWASP Top-10 pass; no secrets/keys hardcoded, all sensitive config env-driven; Clerk/Stripe webhook signatures verified.
+- **Security / compliance bar:** Tenant-isolation proof required via automated test (Section 5, must-have #9); standard global hosting (no data-residency constraint); OWASP Top-10 pass; no secrets/keys hardcoded, all sensitive config env-driven; Clerk/Razorpay webhook signatures verified.
 - **Scale target:** Designed for 500 orgs / a few thousand end users at launch, architected to 10x without re-architecture (RLS + indexed org_id keeps this straightforward).
-- **Test coverage expectation:** All critical paths (auth, org isolation, wizard save/validate, export generation, Stripe webhook handling) covered by Vitest (unit/integration) and Playwright (E2E wizard-to-export flow); tests must pass, not merely exist; CI blocks merge on failure.
+- **Test coverage expectation:** All critical paths (auth, org isolation, wizard save/validate, export generation, Razorpay webhook handling) covered by Vitest (unit/integration) and Playwright (E2E wizard-to-export flow); tests must pass, not merely exist; CI blocks merge on failure.
 
 ## 7. Integrations
 
 | Service | Purpose | Fallback if key/credential missing |
 |---|---|---|
 | Clerk | Auth, org/team management | Dev mode blocks sign-in with a clear config-error screen; never silently allow unauthenticated access |
-| Stripe | Subscription billing | Dev mode: all orgs treated as free-tier, billing UI shows "billing not configured" instead of failing silently |
+| Razorpay | Credit-pack purchases (pay-per-export wallet model) | Dev mode: purchase buttons disabled with a "billing not configured" message, wallet still usable via the free hourly entitlement |
 | Anthropic Claude API | AI-assist drafting per wizard section | AI-assist button is disabled/hidden with a tooltip explaining it's unavailable; manual form-fill still fully works |
 | Resend (or similar) transactional email | Org invite emails, billing notifications | Dev mode: log email payload to console/log instead of sending, clearly marked as not delivered |
 
