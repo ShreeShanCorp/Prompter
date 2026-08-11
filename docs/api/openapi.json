@@ -1,0 +1,392 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Prompter API",
+    "version": "0.1.0",
+    "description": "Hand-written spec covering the routes as built. Auth is a Clerk session token sent as `Authorization: Bearer <token>`, except /health and /webhooks/razorpay. Tenant-scoped routes resolve the org from the Clerk session's active organization -- there is no org-id request parameter anywhere by design (see docs/architecture/multi-tenancy.md)."
+  },
+  "servers": [{ "url": "http://localhost:3001" }],
+  "components": {
+    "securitySchemes": {
+      "clerkSession": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Clerk session token, obtained client-side via useAuth().getToken()."
+      }
+    },
+    "schemas": {
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["draft", "in_progress", "ready_to_export", "exported", "delivered"]
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TemplateResponse": {
+        "type": "object",
+        "description": "One key per wizard section (sectionIdentity, sectionRoles, ...) plus completenessPct. Section keys are data-driven -- see GET /wizard-schema.",
+        "properties": {
+          "completenessPct": { "type": "integer", "minimum": 0, "maximum": 100 }
+        },
+        "additionalProperties": true
+      },
+      "ExportRecord": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "format": { "type": "string", "enum": ["md", "docx", "pdf"] },
+          "version": { "type": "integer" },
+          "creditSource": { "type": "string", "enum": ["free_hourly", "purchased"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "DeliveryRecord": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "targetTool": {
+            "type": "string",
+            "enum": ["claude_code", "codex", "antigravity", "other"]
+          },
+          "method": { "type": "string", "enum": ["copy"] },
+          "status": { "type": "string", "enum": ["pending", "success", "failed"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Wallet": {
+        "type": "object",
+        "properties": {
+          "balance": { "type": "integer" },
+          "lastFreeExportAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "CreditPurchase": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "pack": { "type": "string", "enum": ["starter_1usd_2credits", "value_5usd_20credits"] },
+          "creditsGranted": { "type": "integer" },
+          "amountInr": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "completed", "failed"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AdminOrgSummary": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "slug": { "type": "string" },
+          "status": { "type": "string", "enum": ["active", "suspended"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "memberCount": { "type": "integer" },
+          "projectCount": { "type": "integer" },
+          "walletBalance": { "type": "integer" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Liveness check",
+        "security": [],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/wizard-schema": {
+      "get": {
+        "summary": "The data-driven wizard field schema (Sections 1-12)",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sections": { "type": "array", "items": { "type": "object" } },
+                    "requiredSectionIds": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "summary": "List the active org's projects (soft-deleted excluded)",
+        "security": [{ "clerkSession": [] }],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Project" } } } }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a project (status: draft)",
+        "security": [{ "clerkSession": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" } } } } }
+        },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Project" } } } },
+          "400": { "description": "Missing name" },
+          "423": { "description": "Org is suspended (read-only)" }
+        }
+      }
+    },
+    "/projects/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+      "get": {
+        "summary": "Get a project with its template response",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found (or belongs to another org)" } }
+      },
+      "patch": {
+        "summary": "Rename a project",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" }, "423": { "description": "Org suspended" } }
+      },
+      "delete": {
+        "summary": "Soft-delete a project",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "204": { "description": "Deleted" }, "404": { "description": "Not found" }, "423": { "description": "Org suspended" } }
+      }
+    },
+    "/projects/{id}/template": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+      "patch": {
+        "summary": "Save one or more wizard sections; recomputes completeness and drives the project state machine",
+        "security": [{ "clerkSession": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "description": "Partial map of sectionId -> value, e.g. { sectionIdentity: {...} }" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "project": { "$ref": "#/components/schemas/Project" }, "templateResponse": { "$ref": "#/components/schemas/TemplateResponse" } } }
+              }
+            }
+          },
+          "400": { "description": "No recognized section fields in body" },
+          "404": { "description": "Not found" },
+          "423": { "description": "Org suspended" }
+        }
+      }
+    },
+    "/wallet": {
+      "get": {
+        "summary": "Get the active org's wallet (creates one lazily if it doesn't exist)",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Wallet" } } } } }
+      }
+    },
+    "/projects/{id}/exports": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+      "get": {
+        "summary": "List a project's export history, newest first",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ExportRecord" } } } } } }
+      },
+      "post": {
+        "summary": "Generate an export -- consumes one wallet credit (free hourly entitlement first, then purchased balance)",
+        "security": [{ "clerkSession": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["format"], "properties": { "format": { "type": "string", "enum": ["md", "docx", "pdf"] } } } } }
+        },
+        "responses": {
+          "201": { "description": "Created" },
+          "400": { "description": "Unsupported format" },
+          "402": { "description": "Insufficient credits" },
+          "404": { "description": "Not found" },
+          "409": { "description": "Project not ready to export (must be ready_to_export or later)" }
+        }
+      }
+    },
+    "/projects/{id}/exports/{exportId}/download": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+        { "name": "exportId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "summary": "Download the generated file (streamed through the API, not a redirect)",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "200": { "description": "The file, with the correct Content-Type and Content-Disposition: attachment" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/projects/{id}/deliveries": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+      "get": {
+        "summary": "List delivery history",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/DeliveryRecord" } } } } } }
+      },
+      "post": {
+        "summary": "Deliver the project's content tuned for a specific AI tool. Requires at least one prior export. Free -- does not consume a wallet credit. Only method:\"copy\" is supported (api/mcp deferred to v1.1/v2).",
+        "security": [{ "clerkSession": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["targetTool", "method"],
+                "properties": {
+                  "targetTool": { "type": "string", "enum": ["claude_code", "codex", "antigravity", "other"] },
+                  "method": { "type": "string", "enum": ["copy"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "delivery": { "$ref": "#/components/schemas/DeliveryRecord" }, "project": { "$ref": "#/components/schemas/Project" }, "content": { "type": "string", "description": "The tuned prompt text, ready to copy" } } }
+              }
+            }
+          },
+          "400": { "description": "Unsupported tool or method" },
+          "404": { "description": "Not found" },
+          "409": { "description": "No export exists yet" }
+        }
+      }
+    },
+    "/projects/{id}/ai-assist": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+      "post": {
+        "summary": "Draft a section's content from rough user input via Claude. Does not save it -- caller must PATCH /projects/{id}/template to accept the draft. Rate-limited: 20/hour/org.",
+        "security": [{ "clerkSession": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["section", "inputText"], "properties": { "section": { "type": "string" }, "inputText": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "OK" },
+          "400": { "description": "Unknown section or empty input" },
+          "429": { "description": "Rate limited (20/hour/org)" },
+          "503": { "description": "AI-assist unavailable -- ANTHROPIC_API_KEY not configured" }
+        }
+      }
+    },
+    "/billing/credit-purchases": {
+      "get": {
+        "summary": "List the active org's credit purchase history",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/CreditPurchase" } } } } } }
+      },
+      "post": {
+        "summary": "Start a credit-pack purchase: creates a Razorpay order. Owner role required.",
+        "security": [{ "clerkSession": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["pack"], "properties": { "pack": { "type": "string", "enum": ["starter_1usd_2credits", "value_5usd_20credits"] } } } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "creditPurchaseId": { "type": "string", "format": "uuid" },
+                    "orderId": { "type": "string" },
+                    "amountInr": { "type": "number" },
+                    "currency": { "type": "string", "enum": ["INR"] },
+                    "keyId": { "type": "string", "description": "Absent if Razorpay isn't configured -- frontend must show a fallback message" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Unsupported pack" },
+          "403": { "description": "Not an Owner" },
+          "503": { "description": "Razorpay not configured" }
+        }
+      }
+    },
+    "/webhooks/razorpay": {
+      "post": {
+        "summary": "Razorpay payment.captured webhook. Verified via HMAC-SHA256 signature (X-Razorpay-Signature header) against the raw request body. Idempotent -- redelivery of the same event is a no-op.",
+        "security": [],
+        "responses": {
+          "200": { "description": "Processed (or ignored, for non-payment.captured events)" },
+          "400": { "description": "Invalid signature or malformed payload" },
+          "503": { "description": "Webhook secret or system DB not configured" }
+        }
+      }
+    },
+    "/admin/whoami": {
+      "get": {
+        "summary": "Confirms the caller is a platform admin (used by the frontend to decide whether to show the Admin nav link)",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "200": { "description": "Caller is a platform admin" }, "403": { "description": "Not a platform admin" } }
+      }
+    },
+    "/admin/orgs": {
+      "get": {
+        "summary": "List every org in the system with usage stats. Platform admin only.",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AdminOrgSummary" } } } } }, "403": { "description": "Not a platform admin" } }
+      }
+    },
+    "/admin/orgs/{id}/suspend": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+      "post": {
+        "summary": "Suspend an org -- immediately blocks all writes from its members (423), reads still work. Platform admin only.",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "200": { "description": "OK" }, "403": { "description": "Not a platform admin" } }
+      }
+    },
+    "/admin/orgs/{id}/reactivate": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+      "post": {
+        "summary": "Reactivate a suspended org. Platform admin only.",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "200": { "description": "OK" }, "403": { "description": "Not a platform admin" } }
+      }
+    },
+    "/admin/platform-settings/product-name": {
+      "get": {
+        "summary": "Get the current product name (rename point). Platform admin only.",
+        "security": [{ "clerkSession": [] }],
+        "responses": { "200": { "description": "OK" }, "403": { "description": "Not a platform admin" } }
+      },
+      "put": {
+        "summary": "Set the product name. Platform admin only. Not currently wired into any frontend branding -- see docs/admin-guide.md.",
+        "security": [{ "clerkSession": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["value"], "properties": { "value": { "type": "string" } } } } }
+        },
+        "responses": { "200": { "description": "OK" }, "400": { "description": "Empty value" }, "403": { "description": "Not a platform admin" } }
+      }
+    }
+  }
+}
