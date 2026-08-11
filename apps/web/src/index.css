@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  /* Linear-ish neutral, minimal-chrome palette (Section 8 reference). */
+  --color-canvas: #fbfbfa;
+  --color-surface: #ffffff;
+  --color-border: #e5e5e3;
+  --color-text: #1b1b18;
+  --color-text-muted: #6b6b66;
+  --color-accent: #5e6ad2;
+  --color-accent-hover: #4d57b8;
+  --color-danger: #d1453b;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-text);
+}

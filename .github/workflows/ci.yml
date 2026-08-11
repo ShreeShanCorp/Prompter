@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: prompter
+          POSTGRES_PASSWORD: prompter
+          POSTGRES_DB: prompter
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U prompter"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Ephemeral, disposable CI-only database that exists only for the job's
+      # duration -- not a production credential.
+      DIRECT_DATABASE_URL: "postgresql://prompter:prompter@localhost:5433/prompter?schema=public"
+      DATABASE_URL: "postgresql://app_role:app_role_ci_pw@localhost:5433/prompter?schema=public"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - name: Prisma migrate deploy + generate
+        run: |
+          npm run migrate:deploy --workspace @prompter/db
+          npm run generate --workspace @prompter/db
+
+      - name: Set app_role password for this job's database
+        run: |
+          PGPASSWORD=prompter psql -h localhost -p 5433 -U prompter -d prompter \
+            -c "ALTER ROLE app_role WITH PASSWORD 'app_role_ci_pw';"
+
+      - run: npm run typecheck
+
+      - run: npm run build
+
+      - run: npm run test
