@@ -12,6 +12,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fakeTenantScope } from "./testAuth.js";
 import type { PaymentClient } from "../lib/razorpay.js";
+import type { EmailClient, EmailMessage } from "../lib/email.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 config({ path: path.resolve(__dirname, "../../../../packages/db/.env") });
@@ -88,10 +89,17 @@ async function seedOrgWithOwner() {
     ),
   );
 
-  const webhookApp = express();
-  webhookApp.use(createRazorpayWebhookRouter());
+  const sentEmails: EmailMessage[] = [];
+  const fakeEmailClient: EmailClient = {
+    async send(message) {
+      sentEmails.push(message);
+    },
+  };
 
-  return { org, owner, member, ownerApp, memberApp, webhookApp };
+  const webhookApp = express();
+  webhookApp.use(createRazorpayWebhookRouter(fakeEmailClient));
+
+  return { org, owner, member, ownerApp, memberApp, webhookApp, sentEmails };
 }
 
 describe("billing (Razorpay credit purchases)", () => {
@@ -188,5 +196,11 @@ describe("billing (Razorpay credit purchases)", () => {
       tx.wallet.findUniqueOrThrow({ where: { orgId: ctx.org.id } }),
     );
     expect(walletAfterRedelivery.balance).toBe(2);
+
+    // Exactly one receipt email, not one per delivery attempt.
+    expect(ctx.sentEmails).toHaveLength(1);
+    expect(ctx.sentEmails[0]?.to).toBe("owner@example.com");
+    expect(ctx.sentEmails[0]?.subject).toContain("2 credits");
+    expect(ctx.sentEmails[0]?.html).toContain("Billing Test Org");
   });
 });
