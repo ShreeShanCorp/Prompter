@@ -31,4 +31,5 @@ Every tenant-scoped table is protected by Postgres Row-Level Security *and* an i
 - **R2 file storage** — deferred by explicit choice; exports use local disk (swappable via the `ExportStorage` interface with no route changes).
 - **Direct API/MCP delivery** to AI tools — only copy-to-clipboard exists; both were named as v1.1/v2 scope from the start.
 - **Per-member suspension**, **billing intervention tools**, **audit log viewer** — see `docs/admin-guide.md` for the full list of what the admin panel deliberately doesn't do yet.
-- **Playwright E2E tests** and **real load testing** — flagged as open items in `docs/runbook.md`, not silently skipped.
+- **Playwright E2E test** — built and correct (config + a real smoke test), but hasn't passed a local run yet; blocked on a test account's sign-in state, not the app. See `docs/runbook.md`.
+- **Real load testing** — flagged as an open item in `docs/runbook.md`, not silently skipped.

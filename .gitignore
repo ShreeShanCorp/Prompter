@@ -8,3 +8,5 @@ build/
 packages/db/generated/
 .local-exports*/
 coverage/
+apps/web/playwright-report/
+apps/web/test-results/

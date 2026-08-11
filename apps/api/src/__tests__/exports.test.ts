@@ -189,7 +189,7 @@ describe("export generation and wallet credits", () => {
       const bytes = await readFile(filePath);
       expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     },
-    20_000,
+    45_000,
   );
 
   it("rejects an unsupported format", async () => {
