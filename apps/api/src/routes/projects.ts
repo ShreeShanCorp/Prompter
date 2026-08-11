@@ -11,6 +11,7 @@ import { renderTemplatePdf } from "../lib/renderPdf.js";
 import { defaultExportStorage, type ExportStorage } from "../lib/exportStorage.js";
 import { tunePromptForTool } from "../lib/tunePrompt.js";
 import { createDefaultAiAssistClient, type AiAssistClient } from "../lib/aiAssist.js";
+import { aiAssistRateLimit } from "../middleware/aiAssistRateLimit.js";
 import type { DeliveryTargetTool } from "@prompter/db";
 import type { ExportFormat } from "@prompter/shared";
 
@@ -403,7 +404,7 @@ projectsRouter.patch("/projects/:id/template", async (req, res) => {
     res.status(201).json({ delivery: result.delivery, project: result.project, content: result.content });
   });
 
-  projectsRouter.post("/projects/:id/ai-assist", async (req, res) => {
+  projectsRouter.post("/projects/:id/ai-assist", aiAssistRateLimit, async (req, res) => {
     const tenant = req.tenant!;
     const { section, inputText } = req.body as { section?: string; inputText?: string };
 
@@ -421,8 +422,9 @@ projectsRouter.patch("/projects/:id/template", async (req, res) => {
       return;
     }
 
+    const projectId = req.params.id as string;
     const project = await withTenantContext(prisma, tenant.orgId, (tx) =>
-      tx.project.findFirst({ where: { id: req.params.id, deletedAt: null } }),
+      tx.project.findFirst({ where: { id: projectId, deletedAt: null } }),
     );
     if (!project) {
       res.status(404).json({ error: "not_found" });

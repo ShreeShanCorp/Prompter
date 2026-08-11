@@ -15,10 +15,21 @@ interface RazorpayPaymentCapturedEvent {
   };
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function receiptEmailHtml(orgName: string, creditsGranted: number, amountInr: string): string {
+  // orgName is user-controlled (set via Clerk org creation) -- must be
+  // escaped before interpolating into HTML sent to another user's inbox.
   return `
     <p>Thanks for your purchase!</p>
-    <p><strong>${orgName}</strong>'s Prompter wallet was credited with <strong>${creditsGranted} export credits</strong>.</p>
+    <p><strong>${escapeHtml(orgName)}</strong>'s Prompter wallet was credited with <strong>${creditsGranted} export credits</strong>.</p>
     <p>Amount charged: ₹${amountInr}</p>
   `;
 }
@@ -107,10 +118,14 @@ export function createRazorpayWebhookRouter(emailClient: EmailClient = createDef
     // (Razorpay would otherwise retry an already-completed purchase).
     if (receipt) {
       try {
+        // Strip newlines from the org name before it reaches an email
+        // header -- header-injection defense-in-depth even though the
+        // Resend SDK/API already rejects raw CRLF in subjects.
+        const safeOrgName = receipt.orgName.replace(/[\r\n]+/g, " ");
         await emailClient.send({
           to: receipt.purchaserEmail,
-          subject: `Prompter — ${receipt.creditsGranted} credits added to ${receipt.orgName}`,
-          html: receiptEmailHtml(receipt.orgName, receipt.creditsGranted, receipt.amountInr),
+          subject: `Prompter — ${receipt.creditsGranted} credits added to ${safeOrgName}`,
+          html: receiptEmailHtml(safeOrgName, receipt.creditsGranted, receipt.amountInr),
         });
       } catch (err) {
         console.error("[razorpay webhook] receipt email failed to send:", err);

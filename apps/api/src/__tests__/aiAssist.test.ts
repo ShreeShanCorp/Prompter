@@ -29,7 +29,7 @@ const fakeClient: AiAssistClient = {
   },
 };
 
-async function seedProject(scope: "with-client" | "without-client") {
+async function seedProject(scope: "with-client" | "without-client" | "rate-limit") {
   const org = await prisma.org.create({
     data: {
       name: "AI Assist Test Org",
@@ -53,7 +53,7 @@ async function seedProject(scope: "with-client" | "without-client") {
     createProjectsRouter(
       fakeTenantScope({ orgId: org.id, memberId: member.id, role: "owner", isPlatformAdmin: false }),
       defaultExportStorage,
-      scope === "with-client" ? fakeClient : null,
+      scope === "without-client" ? null : fakeClient,
     ),
   );
 
@@ -64,14 +64,19 @@ async function seedProject(scope: "with-client" | "without-client") {
 describe("ai-assist", () => {
   let withClient: Awaited<ReturnType<typeof seedProject>>;
   let withoutClient: Awaited<ReturnType<typeof seedProject>>;
+  let rateLimitCtx: Awaited<ReturnType<typeof seedProject>>;
 
   beforeAll(async () => {
     withClient = await seedProject("with-client");
     withoutClient = await seedProject("without-client");
+    // Own org so this test's request count starts at zero -- the rate
+    // limiter is keyed per-org, and other tests in this file already spend
+    // some of withClient's budget.
+    rateLimitCtx = await seedProject("rate-limit");
   });
 
   afterAll(async () => {
-    for (const ctx of [withClient, withoutClient]) {
+    for (const ctx of [withClient, withoutClient, rateLimitCtx]) {
       await withTenantContext(prisma, ctx.org.id, (tx) => tx.aIAssistRequest.deleteMany({}));
       await withTenantContext(prisma, ctx.org.id, (tx) => tx.templateResponse.deleteMany({}));
       await withTenantContext(prisma, ctx.org.id, (tx) => tx.project.deleteMany({}));
@@ -122,4 +127,22 @@ describe("ai-assist", () => {
     expect(res.status).toBe(503);
     expect(res.body.error).toBe("ai_assist_unavailable");
   });
+
+  it(
+    "rate-limits after 20 requests per org per hour (no wallet gate on this endpoint, unlike exports)",
+    async () => {
+      for (let i = 0; i < 20; i++) {
+        const res = await request(rateLimitCtx.app)
+          .post(`/projects/${rateLimitCtx.projectId}/ai-assist`)
+          .send({ section: "sectionIdentity", inputText: `attempt ${i}` });
+        expect(res.status).toBe(200);
+      }
+      const blocked = await request(rateLimitCtx.app)
+        .post(`/projects/${rateLimitCtx.projectId}/ai-assist`)
+        .send({ section: "sectionIdentity", inputText: "one too many" });
+      expect(blocked.status).toBe(429);
+      expect(blocked.body.error).toBe("rate_limited");
+    },
+    20_000,
+  );
 });

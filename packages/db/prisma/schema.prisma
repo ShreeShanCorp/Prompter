@@ -168,6 +168,8 @@ model Project {
   deliveryRecords DeliveryRecord[]
   aiAssistRequests AIAssistRequest[]
 
+  // orgId: every RLS-filtered query hits this column, on every request.
+  @@index([orgId])
   @@map("projects")
 }
 
@@ -192,6 +194,7 @@ model TemplateResponse {
 
   project Project @relation(fields: [projectId], references: [id])
 
+  @@index([orgId])
   @@map("template_responses")
 }
 
@@ -211,6 +214,8 @@ model Export {
   deliveryRecords   DeliveryRecord[]
   walletTransactions WalletTransaction[]
 
+  @@index([orgId])
+  @@index([projectId])
   @@map("exports")
 }
 
@@ -230,6 +235,8 @@ model DeliveryRecord {
   export    Export? @relation(fields: [exportId], references: [id])
   initiator Member  @relation("DeliveryInitiatedBy", fields: [initiatedBy], references: [id])
 
+  @@index([orgId])
+  @@index([projectId])
   @@map("delivery_records")
 }
 
@@ -266,6 +273,7 @@ model CreditPurchase {
   purchaser  Member              @relation("CreditPurchasedBy", fields: [purchasedBy], references: [id])
   walletTxns WalletTransaction[]
 
+  @@index([orgId])
   @@map("credit_purchases")
 }
 
@@ -284,6 +292,8 @@ model WalletTransaction {
   export         Export?         @relation(fields: [relatedExportId], references: [id])
   creditPurchase CreditPurchase? @relation(fields: [relatedCreditPurchaseId], references: [id])
 
+  @@index([orgId])
+  @@index([walletId])
   @@map("wallet_transactions")
 }
 
@@ -304,6 +314,8 @@ model AIAssistRequest {
   org     Org     @relation(fields: [orgId], references: [id])
   member  Member  @relation(fields: [memberId], references: [id])
 
+  @@index([orgId])
+  @@index([projectId])
   @@map("ai_assist_requests")
 }
 
@@ -317,6 +329,7 @@ model AdminAccessLog {
   admin Member @relation(fields: [platformAdminId], references: [id])
   org   Org    @relation(fields: [orgId], references: [id])
 
+  @@index([orgId])
   @@map("admin_access_log")
 }
 
