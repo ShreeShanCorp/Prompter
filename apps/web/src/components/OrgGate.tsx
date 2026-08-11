@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Outlet } from "react-router-dom";
 import { CreateOrganization, OrganizationSwitcher, useOrganization } from "@clerk/clerk-react";
 
 /**
@@ -28,4 +29,13 @@ export function OrgGate({ children }: { children: ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+/** Same gate, usable as a react-router layout route (renders <Outlet/> once an org is active). */
+export function OrgGateLayout() {
+  return (
+    <OrgGate>
+      <Outlet />
+    </OrgGate>
+  );
 }

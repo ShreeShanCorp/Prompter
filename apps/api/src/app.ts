@@ -4,9 +4,11 @@ import { clerkMiddleware } from "@clerk/express";
 import { healthRouter } from "./routes/health.js";
 import { createProjectsRouter } from "./routes/projects.js";
 import { createBillingRouter } from "./routes/billing.js";
+import { createAdminRouter } from "./routes/admin.js";
 import { createRazorpayWebhookRouter } from "./routes/razorpayWebhook.js";
 import { tenantScope } from "./middleware/tenantScope.js";
 import { devTenantScope } from "./middleware/devTenantScope.js";
+import { requirePlatformAdmin } from "./middleware/requirePlatformAdmin.js";
 
 export interface CreateAppOptions {
   /** Test-only: bypasses Clerk entirely with a fake tenant resolver. */
@@ -39,5 +41,11 @@ export function createApp(options: CreateAppOptions = {}) {
   const scope = options.tenantScopeMiddleware ?? (usingDevAuthBypass ? devTenantScope : tenantScope);
   app.use(createProjectsRouter(scope));
   app.use(createBillingRouter(scope));
+
+  // Dev bypass: allow admin routes through unauthenticated, same convenience
+  // scope as devTenantScope -- both are inert once CLERK_SECRET_KEY is set.
+  const adminGuard: RequestHandler = usingDevAuthBypass ? (_req, _res, next) => next() : requirePlatformAdmin;
+  app.use(createAdminRouter(adminGuard));
+
   return app;
 }

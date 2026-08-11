@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { api, type ProjectStatus } from "../lib/apiClient";
+import { api, describeError, type ProjectStatus } from "../lib/apiClient";
 import { WalletPanel } from "../components/WalletPanel";
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
@@ -15,20 +15,27 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 export function Dashboard() {
   const queryClient = useQueryClient();
   const [newName, setNewName] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
 
   const createMutation = useMutation({
     mutationFn: (name: string) => api.createProject(name),
     onSuccess: () => {
+      setError(null);
       setNewName("");
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
+    onError: (err) => setError(describeError(err)),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteProject(id),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["projects"] }),
+    onSuccess: () => {
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+    onError: (err) => setError(describeError(err)),
   });
 
   return (
@@ -38,7 +45,7 @@ export function Dashboard() {
       <WalletPanel />
 
       <form
-        className="flex gap-2 mb-8"
+        className="flex gap-2 mb-2"
         onSubmit={(e) => {
           e.preventDefault();
           if (newName.trim()) createMutation.mutate(newName.trim());
@@ -58,6 +65,8 @@ export function Dashboard() {
           {createMutation.isPending ? "Creating..." : "New project"}
         </button>
       </form>
+      {error && <p className="mb-6 text-xs text-[var(--color-danger)]">{error}</p>}
+      {!error && <div className="mb-8" />}
 
       {projectsQuery.isLoading && <p className="text-sm text-[var(--color-text-muted)]">Loading...</p>}
       {projectsQuery.isError && (

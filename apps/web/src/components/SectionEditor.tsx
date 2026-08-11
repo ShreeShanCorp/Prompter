@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { WizardFieldDefinition } from "../lib/apiClient";
+import { describeError, type WizardFieldDefinition } from "../lib/apiClient";
 
 function toEditableText(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -51,6 +51,8 @@ export function SectionEditor({ field, value, onSave, onAiAssist }: SectionEdito
     setSaving(true);
     try {
       await onSave(parsed);
+    } catch (err) {
+      setError(describeError(err));
     } finally {
       setSaving(false);
     }

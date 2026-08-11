@@ -94,6 +94,14 @@ export async function tenantScope(req: Request, res: Response, next: NextFunctio
     return;
   }
 
+  // Suspended orgs are read-only (state-machines.md edge case): a Platform
+  // Admin suspension blocks all writes regardless of current project state,
+  // until reactivated.
+  if (org.status === "suspended" && req.method !== "GET") {
+    res.status(423).json({ error: "org_suspended" });
+    return;
+  }
+
   req.tenant = {
     orgId: org.id,
     memberId: member.id,

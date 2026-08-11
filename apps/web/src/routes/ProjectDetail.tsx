@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import {
   api,
-  ApiError,
+  describeError,
   type DeliveryTargetTool,
   type ExportFormat,
   type ProjectStatus,
@@ -62,7 +62,7 @@ export function ProjectDetail() {
       void queryClient.invalidateQueries({ queryKey: ["project", id] });
       void queryClient.invalidateQueries({ queryKey: ["exports", id] });
     },
-    onError: (err) => setExportError(err instanceof ApiError ? err.message : "Export failed."),
+    onError: (err) => setExportError(describeError(err)),
   });
 
   const deliverMutation = useMutation({
@@ -73,7 +73,7 @@ export function ProjectDetail() {
       void queryClient.invalidateQueries({ queryKey: ["project", id] });
       void queryClient.invalidateQueries({ queryKey: ["deliveries", id] });
     },
-    onError: (err) => setDeliveryMessage(err instanceof ApiError ? err.message : "Delivery failed."),
+    onError: (err) => setDeliveryMessage(describeError(err)),
   });
 
   if (!projectQuery.data || !schemaQuery.data) {

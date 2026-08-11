@@ -319,3 +319,17 @@ model AdminAccessLog {
 
   @@map("admin_access_log")
 }
+
+/**
+ * Platform-wide key/value config, not tenant-scoped (no org_id, no RLS).
+ * Currently just the product rename-point (Section 1: "centralize the name
+ * ... so it can be renamed later without a code-wide find/replace"), edited
+ * via the admin panel rather than requiring an env var change + redeploy.
+ */
+model PlatformSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
+}

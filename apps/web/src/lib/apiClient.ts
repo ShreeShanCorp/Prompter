@@ -71,6 +71,17 @@ export interface CreatedOrder {
   keyId?: string;
 }
 
+export interface AdminOrgSummary {
+  id: string;
+  name: string;
+  slug: string;
+  status: "active" | "suspended";
+  createdAt: string;
+  memberCount: number;
+  projectCount: number;
+  walletBalance: number;
+}
+
 class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -78,6 +89,19 @@ class ApiError extends Error {
   ) {
     super(body.error ?? `Request failed: ${status}`);
   }
+}
+
+/** Turns a caught mutation error into a message worth showing the user. */
+export function describeError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 423 || err.body.error === "org_suspended") {
+      return "This organization has been suspended and is read-only. Contact an admin.";
+    }
+    if (err.status === 403) return "You don't have permission to do that.";
+    if (err.status === 401) return "You need to sign in again.";
+    return err.body.detail ?? err.message;
+  }
+  return "Something went wrong.";
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -142,5 +166,20 @@ export const api = {
     request<{ section: string; outputText: string; model: string }>(`/projects/${id}/ai-assist`, {
       method: "POST",
       body: JSON.stringify({ section, inputText }),
+    }),
+
+  isPlatformAdmin: () =>
+    request<{ isPlatformAdmin: true }>("/admin/whoami")
+      .then(() => true)
+      .catch(() => false),
+  listAdminOrgs: () => request<AdminOrgSummary[]>("/admin/orgs"),
+  suspendOrg: (id: string) => request<{ status: string }>(`/admin/orgs/${id}/suspend`, { method: "POST" }),
+  reactivateOrg: (id: string) =>
+    request<{ status: string }>(`/admin/orgs/${id}/reactivate`, { method: "POST" }),
+  getProductName: () => request<{ value: string }>("/admin/platform-settings/product-name"),
+  setProductName: (value: string) =>
+    request<{ value: string }>("/admin/platform-settings/product-name", {
+      method: "PUT",
+      body: JSON.stringify({ value }),
     }),
 };

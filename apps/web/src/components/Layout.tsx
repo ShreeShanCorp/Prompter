@@ -1,8 +1,11 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { OrganizationSwitcher, UserButton } from "@clerk/clerk-react";
+import { api } from "../lib/apiClient";
 
 export function Layout() {
   const location = useLocation();
+  const isAdminQuery = useQuery({ queryKey: ["is-platform-admin"], queryFn: api.isPlatformAdmin });
 
   return (
     <div className="flex h-screen">
@@ -22,6 +25,18 @@ export function Layout() {
           >
             Projects
           </Link>
+          {isAdminQuery.data === true && (
+            <Link
+              to="/admin"
+              className={`rounded-md px-3 py-1.5 text-sm ${
+                location.pathname === "/admin"
+                  ? "bg-[var(--color-accent)]/10 text-[var(--color-accent)] font-medium"
+                  : "text-[var(--color-text-muted)] hover:bg-black/5"
+              }`}
+            >
+              Admin
+            </Link>
+          )}
         </nav>
         <div className="mt-auto px-4 py-4">
           <UserButton />
